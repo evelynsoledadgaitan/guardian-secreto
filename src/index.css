@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-night-900 text-ember-50 font-body antialiased;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+::selection {
+  background: rgba(217,122,31,0.35);
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ember-500 px-6 py-3
+         font-body font-bold text-night-900 shadow-lg shadow-ember-700/30
+         transition-all duration-200 hover:bg-ember-300 hover:-translate-y-0.5
+         active:translate-y-0 disabled:opacity-40 disabled:cursor-not-allowed
+         focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-300;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-ember-500/40 px-6 py-3
+         font-body font-semibold text-ember-100 transition-all duration-200
+         hover:bg-ember-500/10 hover:-translate-y-0.5 active:translate-y-0
+         focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember-300;
+}
+
+.card {
+  @apply rounded-2xl border border-white/10 bg-night-800/70 p-6 shadow-xl shadow-black/30 backdrop-blur;
+}
+
+.label-eyebrow {
+  @apply text-xs font-bold uppercase tracking-[0.25em] text-ember-300;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
