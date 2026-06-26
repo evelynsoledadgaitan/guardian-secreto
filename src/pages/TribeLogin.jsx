@@ -11,8 +11,8 @@ export default function TribeLogin() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activity, setActivity] = useState(null)
-  const [participants, setParticipants] = useState([])
+  const [hasActiveActivity, setHasActiveActivity] = useState(false)
+  const [members, setMembers] = useState([])
   const [selected, setSelected] = useState('')
 
   useEffect(() => {
@@ -24,42 +24,26 @@ export default function TribeLogin() {
     setLoading(true)
     setError('')
 
-    // Buscamos la actividad actualmente activa.
-    const { data: activities, error: actErr } = await supabase
-      .from('activities')
-      .select('id, status, question')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
-
-    if (actErr) {
-      setError('No se pudo conectar con el servidor. Intentá nuevamente.')
-      setLoading(false)
-      return
-    }
-
-    if (!activities || activities.length === 0) {
-      setActivity(null)
-      setParticipants([])
-      setLoading(false)
-      return
-    }
-
-    const current = activities[0]
-    setActivity(current)
-
     const { data: people, error: pplErr } = await supabase
-      .from('participants')
-      .select('id, name, responded')
-      .eq('activity_id', current.id)
+      .from('tribe_members')
+      .select('id, name')
       .eq('tribe', tribeId)
       .order('name', { ascending: true })
 
     if (pplErr) {
       setError('No se pudo cargar la lista de integrantes.')
-    } else {
-      setParticipants(people || [])
+      setLoading(false)
+      return
     }
+    setMembers(people || [])
+
+    const { data: activities } = await supabase
+      .from('activities')
+      .select('id')
+      .eq('status', 'active')
+      .limit(1)
+
+    setHasActiveActivity(Boolean(activities && activities.length > 0))
     setLoading(false)
   }
 
@@ -90,19 +74,19 @@ export default function TribeLogin() {
           <p className="mt-6 rounded-lg bg-red-500/10 p-4 text-sm text-red-200">{error}</p>
         )}
 
-        {!loading && !error && !activity && (
+        {!loading && !error && !hasActiveActivity && (
           <p className="mt-6 rounded-lg bg-white/5 p-4 text-sm text-ember-100/80">
             Todavía no hay una actividad activa. Esperá a que el Sabio la inicie.
           </p>
         )}
 
-        {!loading && !error && activity && participants.length === 0 && (
+        {!loading && !error && members.length === 0 && (
           <p className="mt-6 rounded-lg bg-white/5 p-4 text-sm text-ember-100/80">
             Aún no hay integrantes cargados para tu tribu. Consultá con el Sabio.
           </p>
         )}
 
-        {!loading && !error && activity && participants.length > 0 && (
+        {!loading && !error && members.length > 0 && (
           <div className="mt-6 flex flex-col gap-4">
             <label className="label-eyebrow" htmlFor="participant">
               Seleccioná tu nombre
@@ -114,10 +98,8 @@ export default function TribeLogin() {
               className="rounded-xl border border-white/10 bg-night-700 px-4 py-3 text-ember-50 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-300"
             >
               <option value="">-- Elegí tu nombre --</option>
-              {participants.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.responded ? ' (ya respondió)' : ''}
-                </option>
+              {members.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
 

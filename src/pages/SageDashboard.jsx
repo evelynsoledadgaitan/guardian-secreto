@@ -13,7 +13,8 @@ export default function SageDashboard() {
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(EMPTY_FORM)
   const [savingActivity, setSavingActivity] = useState(false)
-  const [participants, setParticipants] = useState([])
+  const [members, setMembers] = useState([])
+  const [activityResponses, setActivityResponses] = useState([])
   const [bulkText, setBulkText] = useState('')
   const [bulkTribe, setBulkTribe] = useState('mapuche')
   const [singleName, setSingleName] = useState('')
@@ -21,9 +22,8 @@ export default function SageDashboard() {
   const [notice, setNotice] = useState('')
   const [showResults, setShowResults] = useState(false)
   const [revealStage, setRevealStage] = useState(1)
-  const [responses, setResponses] = useState([])
+  const [responsesForResults, setResponsesForResults] = useState([])
 
-  // --- Auth guard -----------------------------------------------------
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) {
@@ -34,7 +34,15 @@ export default function SageDashboard() {
     })
   }, [navigate])
 
-  // --- Cargar actividad más reciente -----------------------------------
+  const loadMembers = useCallback(async () => {
+    const { data } = await supabase
+      .from('tribe_members')
+      .select('id, name, tribe')
+      .order('tribe', { ascending: true })
+      .order('name', { ascending: true })
+    setMembers(data || [])
+  }, [])
+
   const loadActivity = useCallback(async () => {
     setLoading(true)
     const { data: acts } = await supabase
@@ -54,44 +62,41 @@ export default function SageDashboard() {
         option_d: current.option_d || '',
         correct_option: current.correct_option || 'a'
       })
-      await loadParticipants(current.id)
-    } else {
-      setParticipants([])
+      if (current.status === 'active') {
+        await loadActivityResponses(current.id)
+      }
     }
+    await loadMembers()
     setLoading(false)
-  }, [])
+  }, [loadMembers])
 
-  const loadParticipants = useCallback(async (activityId) => {
+  const loadActivityResponses = useCallback(async (activityId) => {
     const { data } = await supabase
-      .from('participants')
-      .select('id, name, tribe, responded')
+      .from('member_responses')
+      .select('member_id')
       .eq('activity_id', activityId)
-      .order('tribe', { ascending: true })
-      .order('name', { ascending: true })
-    setParticipants(data || [])
+    setActivityResponses(data || [])
   }, [])
 
   useEffect(() => {
     if (!checkingAuth) loadActivity()
   }, [checkingAuth, loadActivity])
 
-  // --- Realtime: refrescar conteos mientras la actividad está activa ---
   useEffect(() => {
     if (!activity || activity.status !== 'active') return
     const channel = supabase
       .channel(`activity-${activity.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants', filter: `activity_id=eq.${activity.id}` },
-        () => loadParticipants(activity.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_responses', filter: `activity_id=eq.${activity.id}` },
+        () => loadActivityResponses(activity.id))
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [activity, loadParticipants])
+  }, [activity, loadActivityResponses])
 
   function flash(msg) {
     setNotice(msg)
     setTimeout(() => setNotice(''), 3500)
   }
 
-  // --- Crear / editar actividad -----------------------------------------
   async function saveActivity(e) {
     e.preventDefault()
     setSavingActivity(true)
@@ -114,11 +119,9 @@ export default function SageDashboard() {
     flash('Actividad guardada.')
   }
 
-  // --- Participantes ------------------------------------------------------
-  async function addSingleParticipant() {
-    if (!activity || !singleName.trim()) return
-    const { error } = await supabase.from('participants').insert({
-      activity_id: activity.id,
+  async function addSingleMember() {
+    if (!singleName.trim()) return
+    const { error } = await supabase.from('tribe_members').insert({
       tribe: singleTribe,
       name: singleName.trim()
     })
@@ -127,11 +130,11 @@ export default function SageDashboard() {
       return
     }
     setSingleName('')
-    loadParticipants(activity.id)
+    loadMembers()
   }
 
-  async function addBulkParticipants() {
-    if (!activity || !bulkText.trim()) return
+  async function addBulkMembers() {
+    if (!bulkText.trim()) return
     const names = bulkText
       .split('\n')
       .map((n) => n.trim())
@@ -139,28 +142,27 @@ export default function SageDashboard() {
 
     if (names.length === 0) return
 
-    const rows = names.map((name) => ({ activity_id: activity.id, tribe: bulkTribe, name }))
-    const { error } = await supabase.from('participants').insert(rows)
+    const rows = names.map((name) => ({ tribe: bulkTribe, name }))
+    const { error } = await supabase.from('tribe_members').insert(rows)
     if (error) {
       flash('No se pudo cargar la lista.')
       return
     }
     setBulkText('')
-    loadParticipants(activity.id)
+    loadMembers()
     flash(`${names.length} integrantes agregados a ${bulkTribe}.`)
   }
 
-  async function updateParticipantName(id, name) {
-    await supabase.from('participants').update({ name }).eq('id', id)
-    if (activity) loadParticipants(activity.id)
+  async function updateMemberName(id, name) {
+    await supabase.from('tribe_members').update({ name }).eq('id', id)
+    loadMembers()
   }
 
-  async function deleteParticipant(id) {
-    await supabase.from('participants').delete().eq('id', id)
-    if (activity) loadParticipants(activity.id)
+  async function deleteMember(id) {
+    await supabase.from('tribe_members').delete().eq('id', id)
+    loadMembers()
   }
 
-  // --- Ciclo de vida de la actividad --------------------------------------
   async function startActivity() {
     if (!activity) return
     const { data, error } = await supabase
@@ -174,6 +176,7 @@ export default function SageDashboard() {
       return
     }
     setActivity(data)
+    setActivityResponses([])
     flash('¡Actividad iniciada!')
   }
 
@@ -195,22 +198,21 @@ export default function SageDashboard() {
   }
 
   async function resetActivity() {
-    if (!confirm('Esto creará una nueva actividad en blanco para otro curso. ¿Continuar?')) return
+    if (!confirm('Esto crea una pregunta nueva en blanco. Los integrantes de las tribus se mantienen guardados. ¿Continuar?')) return
     setActivity(null)
-    setParticipants([])
     setForm(EMPTY_FORM)
     setShowResults(false)
     setRevealStage(1)
-    flash('Listo para configurar una nueva actividad.')
+    flash('Listo para configurar una nueva pregunta.')
   }
 
   async function viewResults() {
     if (!activity) return
     const { data } = await supabase
-      .from('responses')
+      .from('member_responses')
       .select('tribe, option_chosen, is_correct')
       .eq('activity_id', activity.id)
-    setResponses(data || [])
+    setResponsesForResults(data || [])
     setShowResults(true)
     setRevealStage(1)
   }
@@ -220,23 +222,25 @@ export default function SageDashboard() {
     navigate('/sabio')
   }
 
-  // --- Derivados ----------------------------------------------------------
+  const respondedMemberIds = useMemo(
+    () => new Set(activityResponses.map((r) => r.member_id)),
+    [activityResponses]
+  )
+
   const counts = useMemo(() => {
     const map = {}
     TRIBES.forEach((t) => {
-      const all = participants.filter((p) => p.tribe === t.id)
-      map[t.id] = {
-        total: all.length,
-        responded: all.filter((p) => p.responded).length
-      }
+      const all = members.filter((m) => m.tribe === t.id)
+      const responded = all.filter((m) => respondedMemberIds.has(m.id)).length
+      map[t.id] = { total: all.length, responded }
     })
     return map
-  }, [participants])
+  }, [members, respondedMemberIds])
 
   const resultsByTribe = useMemo(() => {
     const map = {}
     TRIBES.forEach((t) => {
-      const rs = responses.filter((r) => r.tribe === t.id)
+      const rs = responsesForResults.filter((r) => r.tribe === t.id)
       const opts = { a: 0, b: 0, c: 0, d: 0 }
       rs.forEach((r) => { opts[r.option_chosen] = (opts[r.option_chosen] || 0) + 1 })
       const correct = rs.filter((r) => r.is_correct).length
@@ -248,7 +252,7 @@ export default function SageDashboard() {
       }
     })
     return map
-  }, [responses])
+  }, [responsesForResults])
 
   const winner = useMemo(() => {
     const entries = TRIBES.map((t) => ({ id: t.id, ...resultsByTribe[t.id] }))
@@ -258,9 +262,9 @@ export default function SageDashboard() {
   }, [resultsByTribe])
 
   const totals = useMemo(() => {
-    const totalParticipants = participants.length
-    const totalResponses = responses.length
-    const totalCorrect = responses.filter((r) => r.is_correct).length
+    const totalParticipants = members.length
+    const totalResponses = responsesForResults.length
+    const totalCorrect = responsesForResults.filter((r) => r.is_correct).length
     return {
       totalParticipants,
       totalResponses,
@@ -268,7 +272,7 @@ export default function SageDashboard() {
       totalIncorrect: totalResponses - totalCorrect,
       pct: totalResponses ? Math.round((totalCorrect / totalResponses) * 100) : 0
     }
-  }, [participants, responses])
+  }, [members, responsesForResults])
 
   if (checkingAuth || loading) {
     return (
@@ -298,7 +302,6 @@ export default function SageDashboard() {
       )}
 
       <div className="mx-auto mt-8 max-w-4xl space-y-8">
-        {/* Estado actual */}
         <section className="card flex flex-wrap items-center justify-between gap-4">
           <div>
             <span className="label-eyebrow">Estado de la actividad</span>
@@ -316,13 +319,12 @@ export default function SageDashboard() {
             {activity?.status === 'closed' && (
               <>
                 <button onClick={viewResults} className="btn-primary">Ver resultados</button>
-                <button onClick={resetActivity} className="btn-ghost">Reiniciar para otro curso</button>
+                <button onClick={resetActivity} className="btn-ghost">Nueva pregunta</button>
               </>
             )}
           </div>
         </section>
 
-        {/* Configuración de la pregunta */}
         {(!activity || activity.status === 'draft') && (
           <section className="card animate-fade-up">
             <span className="label-eyebrow">Configurar pregunta</span>
@@ -379,91 +381,90 @@ export default function SageDashboard() {
           </section>
         )}
 
-        {/* Carga de participantes */}
-        {activity && activity.status === 'draft' && (
-          <section className="card animate-fade-up">
-            <span className="label-eyebrow">Participantes</span>
+        <section className="card animate-fade-up">
+          <span className="label-eyebrow">Integrantes de las tribus</span>
+          <p className="mt-1 text-xs text-ember-100/50">
+            Esta lista queda guardada permanentemente: no hace falta volver a cargarla al crear una pregunta nueva.
+          </p>
 
-            <div className="mt-4 grid gap-6 sm:grid-cols-2">
-              <div>
-                <p className="text-sm font-semibold text-ember-100">Agregar uno por uno</p>
-                <div className="mt-2 flex flex-col gap-2">
-                  <select
-                    value={singleTribe}
-                    onChange={(e) => setSingleTribe(e.target.value)}
-                    className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                  >
-                    {TRIBES.map((t) => (
-                      <option key={t.id} value={t.id}>{t.plural}</option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <input
-                      placeholder="Nombre y apellido"
-                      value={singleName}
-                      onChange={(e) => setSingleName(e.target.value)}
-                      className="w-full rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                    />
-                    <button onClick={addSingleParticipant} className="btn-ghost">Agregar</button>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold text-ember-100">Pegar lista completa</p>
-                <div className="mt-2 flex flex-col gap-2">
-                  <select
-                    value={bulkTribe}
-                    onChange={(e) => setBulkTribe(e.target.value)}
-                    className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                  >
-                    {TRIBES.map((t) => (
-                      <option key={t.id} value={t.id}>{t.plural}</option>
-                    ))}
-                  </select>
-                  <textarea
-                    placeholder={'Un nombre por línea\nJuan Pérez\nAna Gómez'}
-                    value={bulkText}
-                    onChange={(e) => setBulkText(e.target.value)}
-                    className="min-h-[88px] rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
+          <div className="mt-4 grid gap-6 sm:grid-cols-2">
+            <div>
+              <p className="text-sm font-semibold text-ember-100">Agregar uno por uno</p>
+              <div className="mt-2 flex flex-col gap-2">
+                <select
+                  value={singleTribe}
+                  onChange={(e) => setSingleTribe(e.target.value)}
+                  className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
+                >
+                  {TRIBES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.plural}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <input
+                    placeholder="Nombre y apellido"
+                    value={singleName}
+                    onChange={(e) => setSingleName(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
                   />
-                  <button onClick={addBulkParticipants} className="btn-ghost self-start">Cargar lista</button>
+                  <button onClick={addSingleMember} className="btn-ghost">Agregar</button>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 space-y-5">
-              {TRIBES.map((t) => (
-                <div key={t.id}>
-                  <TribeBadge tribeId={t.id}>{t.plural} ({participants.filter((p) => p.tribe === t.id).length})</TribeBadge>
-                  <ul className="mt-2 divide-y divide-white/5 rounded-xl border border-white/5">
-                    {participants.filter((p) => p.tribe === t.id).map((p) => (
-                      <li key={p.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                        <input
-                          defaultValue={p.name}
-                          onBlur={(e) => {
-                            if (e.target.value.trim() && e.target.value !== p.name) {
-                              updateParticipantName(p.id, e.target.value.trim())
-                            }
-                          }}
-                          className="w-full bg-transparent text-sm text-ember-50 outline-none"
-                        />
-                        <button onClick={() => deleteParticipant(p.id)} className="text-xs text-red-300 hover:text-red-200">
-                          Eliminar
-                        </button>
-                      </li>
-                    ))}
-                    {participants.filter((p) => p.tribe === t.id).length === 0 && (
-                      <li className="px-3 py-2 text-xs text-ember-100/40">Sin integrantes cargados.</li>
-                    )}
-                  </ul>
-                </div>
-              ))}
+            <div>
+              <p className="text-sm font-semibold text-ember-100">Pegar lista completa</p>
+              <div className="mt-2 flex flex-col gap-2">
+                <select
+                  value={bulkTribe}
+                  onChange={(e) => setBulkTribe(e.target.value)}
+                  className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
+                >
+                  {TRIBES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.plural}</option>
+                  ))}
+                </select>
+                <textarea
+                  placeholder={'Un nombre por línea\nJuan Pérez\nAna Gómez'}
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  className="min-h-[88px] rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
+                />
+                <button onClick={addBulkMembers} className="btn-ghost self-start">Cargar lista</button>
+              </div>
             </div>
-          </section>
-        )}
+          </div>
 
-        {/* Tablero en vivo */}
+          <div className="mt-6 space-y-5">
+            {TRIBES.map((t) => (
+              <div key={t.id}>
+                <TribeBadge tribeId={t.id}>{t.plural} ({members.filter((m) => m.tribe === t.id).length})</TribeBadge>
+                <ul className="mt-2 divide-y divide-white/5 rounded-xl border border-white/5">
+                  {members.filter((m) => m.tribe === t.id).map((m) => (
+                    <li key={m.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                      <input
+                        defaultValue={m.name}
+                        onBlur={(e) => {
+                          if (e.target.value.trim() && e.target.value !== m.name) {
+                            updateMemberName(m.id, e.target.value.trim())
+                          }
+                        }}
+                        className="w-full bg-transparent text-sm text-ember-50 outline-none"
+                      />
+                      <button onClick={() => deleteMember(m.id)} className="text-xs text-red-300 hover:text-red-200">
+                        Eliminar
+                      </button>
+                    </li>
+                  ))}
+                  {members.filter((m) => m.tribe === t.id).length === 0 && (
+                    <li className="px-3 py-2 text-xs text-ember-100/40">Sin integrantes cargados.</li>
+                  )}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {activity && activity.status === 'active' && (
           <section className="card animate-fade-up">
             <span className="label-eyebrow">Tablero en vivo</span>
@@ -491,14 +492,13 @@ export default function SageDashboard() {
             </div>
 
             <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-              <Stat label="Participantes" value={participants.length} />
-              <Stat label="Respondieron" value={participants.filter((p) => p.responded).length} />
-              <Stat label="Pendientes" value={participants.filter((p) => !p.responded).length} />
+              <Stat label="Participantes" value={members.length} />
+              <Stat label="Respondieron" value={activityResponses.length} />
+              <Stat label="Pendientes" value={members.length - activityResponses.length} />
             </div>
           </section>
         )}
 
-        {/* Resultados */}
         {activity && activity.status === 'closed' && showResults && (
           <ResultsView
             stage={revealStage}

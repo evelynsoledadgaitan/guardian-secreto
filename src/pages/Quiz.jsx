@@ -4,8 +4,6 @@ import { supabase, tribeInfo } from '../lib/supabaseClient.js'
 import TribeBadge from '../components/TribeBadge.jsx'
 import Loader from '../components/Loader.jsx'
 
-const OPTION_KEYS = ['a', 'b', 'c', 'd']
-
 export default function Quiz() {
   const { tribeId, participantId } = useParams()
   const tribe = tribeInfo(tribeId)
@@ -13,9 +11,10 @@ export default function Quiz() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activity, setActivity] = useState(null)
-  const [participant, setParticipant] = useState(null)
+  const [member, setMember] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [alreadyAnswered, setAlreadyAnswered] = useState(false)
 
   useEffect(() => {
     load()
@@ -26,8 +25,8 @@ export default function Quiz() {
     setError('')
 
     const { data: person, error: pErr } = await supabase
-      .from('participants')
-      .select('id, name, responded, activity_id, tribe')
+      .from('tribe_members')
+      .select('id, name, tribe')
       .eq('id', participantId)
       .single()
 
@@ -36,30 +35,43 @@ export default function Quiz() {
       setLoading(false)
       return
     }
-    setParticipant(person)
+    setMember(person)
 
     const { data: act, error: aErr } = await supabase
       .from('activities')
       .select('id, status, question, option_a, option_b, option_c, option_d')
-      .eq('id', person.activity_id)
-      .single()
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (aErr || !act) {
-      setError('No se pudo cargar la pregunta.')
+      setError('No hay una actividad activa en este momento.')
       setLoading(false)
       return
     }
     setActivity(act)
+
+    const { data: existing } = await supabase
+      .from('member_responses')
+      .select('id')
+      .eq('activity_id', act.id)
+      .eq('member_id', person.id)
+      .maybeSingle()
+
+    if (existing) setAlreadyAnswered(true)
+
     setLoading(false)
   }
 
   async function answer(optionKey) {
-    if (submitting || participant?.responded || done) return
+    if (submitting || alreadyAnswered || done) return
     setSubmitting(true)
     setError('')
 
-    const { data, error: rpcErr } = await supabase.rpc('submit_response', {
-      p_participant_id: participantId,
+    const { data, error: rpcErr } = await supabase.rpc('submit_member_response', {
+      p_member_id: participantId,
+      p_activity_id: activity.id,
       p_option: optionKey
     })
 
@@ -71,7 +83,7 @@ export default function Quiz() {
     }
 
     if (data === 'already_answered') {
-      setDone(true)
+      setAlreadyAnswered(true)
       return
     }
     if (data === 'activity_closed') {
@@ -110,22 +122,7 @@ export default function Quiz() {
     )
   }
 
-  const alreadyAnswered = participant?.responded || done
-
-  if (activity?.status !== 'active' && !alreadyAnswered) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-6 text-center">
-        <div className="card max-w-md animate-fade-up">
-          <p className="font-display text-xl text-ember-100">
-            La actividad ha finalizado.
-          </p>
-          <Link to="/" className="btn-ghost mt-6 inline-block">Volver al inicio</Link>
-        </div>
-      </main>
-    )
-  }
-
-  if (alreadyAnswered) {
+  if (alreadyAnswered || done) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6 text-center">
         <div className="card max-w-md animate-fade-up">
@@ -134,7 +131,7 @@ export default function Quiz() {
             Ya registraste tu respuesta.
           </p>
           <p className="mt-2 text-sm text-ember-100/60">
-            Gracias por participar, {participant?.name}. Esperá el anuncio del Sabio.
+            Gracias por participar, {member?.name}. Esperá el anuncio del Sabio.
           </p>
           <Link to="/" className="btn-ghost mt-6 inline-block">Volver al inicio</Link>
         </div>
@@ -154,7 +151,7 @@ export default function Quiz() {
       <div className="w-full max-w-lg animate-fade-up">
         <div className="flex items-center justify-between">
           <TribeBadge tribeId={tribeId}>{tribe.label}</TribeBadge>
-          <span className="text-xs text-ember-100/60">{participant?.name}</span>
+          <span className="text-xs text-ember-100/60">{member?.name}</span>
         </div>
 
         <h1 className="mt-5 font-display text-xl font-bold leading-snug text-ember-50 sm:text-2xl">
@@ -175,7 +172,7 @@ export default function Quiz() {
               className="animate-fade-up flex items-center gap-4 rounded-2xl border border-white/10 bg-night-700/70 px-5 py-5 text-left text-base font-semibold text-ember-50 transition-all duration-150 hover:-translate-y-0.5 hover:border-ember-300 hover:bg-ember-500/10 disabled:opacity-50"
             >
               <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ember-500/20 font-display text-sm font-bold text-ember-300">
-                {OPTION_KEYS.indexOf(opt.key) > -1 ? opt.key.toUpperCase() : ''}
+                {opt.key.toUpperCase()}
               </span>
               <span>{opt.text}</span>
             </button>
