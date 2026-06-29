@@ -50,16 +50,14 @@ export default function Quiz() {
       setLoading(false)
       return
     }
-    setActivity(act)
+setActivity(act)
 
-    const { data: existing } = await supabase
-      .from('member_responses')
-      .select('id')
-      .eq('activity_id', act.id)
-      .eq('member_id', person.id)
-      .maybeSingle()
+    const { data: already } = await supabase.rpc('has_responded', {
+      p_member_id: person.id,
+      p_activity_id: act.id
+    })
 
-    if (existing) setAlreadyAnswered(true)
+    if (already) setAlreadyAnswered(true)
 
     setLoading(false)
   }
