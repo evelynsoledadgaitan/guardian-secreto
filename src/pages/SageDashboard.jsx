@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase, TRIBES } from '../lib/supabaseClient.js'
 import TribeBadge from '../components/TribeBadge.jsx'
@@ -100,57 +101,37 @@ export default function SageDashboard() {
   async function saveActivity(e) {
     e.preventDefault()
     setSavingActivity(true)
-
     const payload = { ...form }
-
     let result
     if (activity && activity.status === 'draft') {
       result = await supabase.from('activities').update(payload).eq('id', activity.id).select().single()
     } else {
       result = await supabase.from('activities').insert({ ...payload, status: 'draft' }).select().single()
     }
-
     setSavingActivity(false)
-    if (result.error) {
-      flash('No se pudo guardar la actividad.')
-      return
-    }
+    if (result.error) { flash('No se pudo guardar la actividad.'); return }
     setActivity(result.data)
     flash('Actividad guardada.')
   }
 
   async function addSingleMember() {
     if (!singleName.trim()) return
-    const { error } = await supabase.from('tribe_members').insert({
-      tribe: singleTribe,
-      name: singleName.trim()
-    })
-    if (error) {
-      flash('No se pudo agregar el integrante.')
-      return
-    }
+    const { error } = await supabase.from('tribe_members').insert({ tribe: singleTribe, name: singleName.trim() })
+    if (error) { flash('No se pudo agregar el integrante.'); return }
     setSingleName('')
     loadMembers()
   }
 
   async function addBulkMembers() {
     if (!bulkText.trim()) return
-    const names = bulkText
-      .split('\n')
-      .map((n) => n.trim())
-      .filter(Boolean)
-
+    const names = bulkText.split('\n').map((n) => n.trim()).filter(Boolean)
     if (names.length === 0) return
-
     const rows = names.map((name) => ({ tribe: bulkTribe, name }))
     const { error } = await supabase.from('tribe_members').insert(rows)
-    if (error) {
-      flash('No se pudo cargar la lista.')
-      return
-    }
+    if (error) { flash('No se pudo cargar la lista.'); return }
     setBulkText('')
     loadMembers()
-    flash(`${names.length} integrantes agregados a ${bulkTribe}.`)
+    flash(`${names.length} integrantes agregados.`)
   }
 
   async function updateMemberName(id, name) {
@@ -165,16 +146,8 @@ export default function SageDashboard() {
 
   async function startActivity() {
     if (!activity) return
-    const { data, error } = await supabase
-      .from('activities')
-      .update({ status: 'active' })
-      .eq('id', activity.id)
-      .select()
-      .single()
-    if (error) {
-      flash('No se pudo iniciar la actividad.')
-      return
-    }
+    const { data, error } = await supabase.from('activities').update({ status: 'active' }).eq('id', activity.id).select().single()
+    if (error) { flash('No se pudo iniciar la actividad.'); return }
     setActivity(data)
     setActivityResponses([])
     flash('¡Actividad iniciada!')
@@ -182,23 +155,15 @@ export default function SageDashboard() {
 
   async function closeActivity() {
     if (!activity) return
-    const { data, error } = await supabase
-      .from('activities')
-      .update({ status: 'closed' })
-      .eq('id', activity.id)
-      .select()
-      .single()
-    if (error) {
-      flash('No se pudo cerrar la actividad.')
-      return
-    }
+    const { data, error } = await supabase.from('activities').update({ status: 'closed' }).eq('id', activity.id).select().single()
+    if (error) { flash('No se pudo cerrar la actividad.'); return }
     setActivity(data)
     setShowResults(false)
     flash('Actividad cerrada.')
   }
 
   async function resetActivity() {
-    if (!confirm('Esto crea una pregunta nueva en blanco. Los integrantes de las tribus se mantienen guardados. ¿Continuar?')) return
+    if (!confirm('Esto crea una pregunta nueva en blanco. Los integrantes se mantienen guardados. ¿Continuar?')) return
     setActivity(null)
     setForm(EMPTY_FORM)
     setShowResults(false)
@@ -208,10 +173,7 @@ export default function SageDashboard() {
 
   async function viewResults() {
     if (!activity) return
-    const { data } = await supabase
-      .from('member_responses')
-      .select('tribe, option_chosen, is_correct')
-      .eq('activity_id', activity.id)
+    const { data } = await supabase.from('member_responses').select('tribe, option_chosen, is_correct').eq('activity_id', activity.id)
     setResponsesForResults(data || [])
     setShowResults(true)
     setRevealStage(1)
@@ -222,10 +184,7 @@ export default function SageDashboard() {
     navigate('/sabio')
   }
 
-  const respondedMemberIds = useMemo(
-    () => new Set(activityResponses.map((r) => r.member_id)),
-    [activityResponses]
-  )
+  const respondedMemberIds = useMemo(() => new Set(activityResponses.map((r) => r.member_id)), [activityResponses])
 
   const counts = useMemo(() => {
     const map = {}
@@ -244,12 +203,7 @@ export default function SageDashboard() {
       const opts = { a: 0, b: 0, c: 0, d: 0 }
       rs.forEach((r) => { opts[r.option_chosen] = (opts[r.option_chosen] || 0) + 1 })
       const correct = rs.filter((r) => r.is_correct).length
-      map[t.id] = {
-        opts,
-        total: rs.length,
-        correct,
-        pct: rs.length ? Math.round((correct / rs.length) * 100) : 0
-      }
+      map[t.id] = { opts, total: rs.length, correct, pct: rs.length ? Math.round((correct / rs.length) * 100) : 0 }
     })
     return map
   }, [responsesForResults])
@@ -265,21 +219,11 @@ export default function SageDashboard() {
     const totalParticipants = members.length
     const totalResponses = responsesForResults.length
     const totalCorrect = responsesForResults.filter((r) => r.is_correct).length
-    return {
-      totalParticipants,
-      totalResponses,
-      totalCorrect,
-      totalIncorrect: totalResponses - totalCorrect,
-      pct: totalResponses ? Math.round((totalCorrect / totalResponses) * 100) : 0
-    }
+    return { totalParticipants, totalResponses, totalCorrect, totalIncorrect: totalResponses - totalCorrect, pct: totalResponses ? Math.round((totalCorrect / totalResponses) * 100) : 0 }
   }, [members, responsesForResults])
 
   if (checkingAuth || loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <Loader label="Cargando panel del Sabio…" />
-      </main>
-    )
+    return <main className="flex min-h-screen items-center justify-center"><Loader label="Cargando panel del Sabio…" /></main>
   }
 
   return (
@@ -310,12 +254,8 @@ export default function SageDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {activity?.status === 'draft' && (
-              <button onClick={startActivity} className="btn-primary">Iniciar actividad</button>
-            )}
-            {activity?.status === 'active' && (
-              <button onClick={closeActivity} className="btn-primary">Cerrar actividad</button>
-            )}
+            {activity?.status === 'draft' && <button onClick={startActivity} className="btn-primary">Iniciar actividad</button>}
+            {activity?.status === 'active' && <button onClick={closeActivity} className="btn-primary">Cerrar actividad</button>}
             {activity?.status === 'closed' && (
               <>
                 <button onClick={viewResults} className="btn-primary">Ver resultados</button>
@@ -336,13 +276,10 @@ export default function SageDashboard() {
                 onChange={(e) => setForm((f) => ({ ...f, question: e.target.value }))}
                 className="min-h-[80px] rounded-xl border border-white/10 bg-night-700 px-4 py-3 text-ember-50 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-300"
               />
-
               <div className="grid gap-3 sm:grid-cols-2">
                 {['a', 'b', 'c', 'd'].map((key) => (
                   <div key={key} className="flex items-center gap-2">
-                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-ember-500/20 font-display font-bold text-ember-300">
-                      {key.toUpperCase()}
-                    </span>
+                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-ember-500/20 font-display font-bold text-ember-300">{key.toUpperCase()}</span>
                     <input
                       required
                       placeholder={`Opción ${key.toUpperCase()}`}
@@ -353,27 +290,17 @@ export default function SageDashboard() {
                   </div>
                 ))}
               </div>
-
               <div>
                 <span className="label-eyebrow">Respuesta correcta</span>
                 <div className="mt-2 flex gap-2">
                   {['a', 'b', 'c', 'd'].map((key) => (
-                    <button
-                      type="button"
-                      key={key}
-                      onClick={() => setForm((f) => ({ ...f, correct_option: key }))}
-                      className={`h-10 w-10 rounded-lg font-display font-bold transition-colors ${
-                        form.correct_option === key
-                          ? 'bg-jade-500 text-night-900'
-                          : 'bg-night-700 text-ember-100 hover:bg-night-600'
-                      }`}
-                    >
+                    <button type="button" key={key} onClick={() => setForm((f) => ({ ...f, correct_option: key }))}
+                      className={`h-10 w-10 rounded-lg font-display font-bold transition-colors ${form.correct_option === key ? 'bg-jade-500 text-night-900' : 'bg-night-700 text-ember-100 hover:bg-night-600'}`}>
                       {key.toUpperCase()}
                     </button>
                   ))}
                 </div>
               </div>
-
               <button type="submit" disabled={savingActivity} className="btn-primary self-start">
                 {savingActivity ? 'Guardando…' : activity ? 'Guardar cambios' : 'Crear actividad'}
               </button>
@@ -383,58 +310,31 @@ export default function SageDashboard() {
 
         <section className="card animate-fade-up">
           <span className="label-eyebrow">Integrantes de las tribus</span>
-          <p className="mt-1 text-xs text-ember-100/50">
-            Esta lista queda guardada permanentemente: no hace falta volver a cargarla al crear una pregunta nueva.
-          </p>
-
+          <p className="mt-1 text-xs text-ember-100/50">Esta lista queda guardada permanentemente: no hace falta volver a cargarla al crear una pregunta nueva.</p>
           <div className="mt-4 grid gap-6 sm:grid-cols-2">
             <div>
               <p className="text-sm font-semibold text-ember-100">Agregar uno por uno</p>
               <div className="mt-2 flex flex-col gap-2">
-                <select
-                  value={singleTribe}
-                  onChange={(e) => setSingleTribe(e.target.value)}
-                  className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                >
-                  {TRIBES.map((t) => (
-                    <option key={t.id} value={t.id}>{t.plural}</option>
-                  ))}
+                <select value={singleTribe} onChange={(e) => setSingleTribe(e.target.value)} className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50">
+                  {TRIBES.map((t) => <option key={t.id} value={t.id}>{t.plural}</option>)}
                 </select>
                 <div className="flex gap-2">
-                  <input
-                    placeholder="Nombre y apellido"
-                    value={singleName}
-                    onChange={(e) => setSingleName(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                  />
+                  <input placeholder="Nombre y apellido" value={singleName} onChange={(e) => setSingleName(e.target.value)} className="w-full rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50" />
                   <button onClick={addSingleMember} className="btn-ghost">Agregar</button>
                 </div>
               </div>
             </div>
-
             <div>
               <p className="text-sm font-semibold text-ember-100">Pegar lista completa</p>
               <div className="mt-2 flex flex-col gap-2">
-                <select
-                  value={bulkTribe}
-                  onChange={(e) => setBulkTribe(e.target.value)}
-                  className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                >
-                  {TRIBES.map((t) => (
-                    <option key={t.id} value={t.id}>{t.plural}</option>
-                  ))}
+                <select value={bulkTribe} onChange={(e) => setBulkTribe(e.target.value)} className="rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50">
+                  {TRIBES.map((t) => <option key={t.id} value={t.id}>{t.plural}</option>)}
                 </select>
-                <textarea
-                  placeholder={'Un nombre por línea\nJuan Pérez\nAna Gómez'}
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  className="min-h-[88px] rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50"
-                />
+                <textarea placeholder={'Un nombre por línea\nJuan Pérez\nAna Gómez'} value={bulkText} onChange={(e) => setBulkText(e.target.value)} className="min-h-[88px] rounded-xl border border-white/10 bg-night-700 px-3 py-2 text-ember-50" />
                 <button onClick={addBulkMembers} className="btn-ghost self-start">Cargar lista</button>
               </div>
             </div>
           </div>
-
           <div className="mt-6 space-y-5">
             {TRIBES.map((t) => (
               <div key={t.id}>
@@ -442,23 +342,11 @@ export default function SageDashboard() {
                 <ul className="mt-2 divide-y divide-white/5 rounded-xl border border-white/5">
                   {members.filter((m) => m.tribe === t.id).map((m) => (
                     <li key={m.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                      <input
-                        defaultValue={m.name}
-                        onBlur={(e) => {
-                          if (e.target.value.trim() && e.target.value !== m.name) {
-                            updateMemberName(m.id, e.target.value.trim())
-                          }
-                        }}
-                        className="w-full bg-transparent text-sm text-ember-50 outline-none"
-                      />
-                      <button onClick={() => deleteMember(m.id)} className="text-xs text-red-300 hover:text-red-200">
-                        Eliminar
-                      </button>
+                      <input defaultValue={m.name} onBlur={(e) => { if (e.target.value.trim() && e.target.value !== m.name) updateMemberName(m.id, e.target.value.trim()) }} className="w-full bg-transparent text-sm text-ember-50 outline-none" />
+                      <button onClick={() => deleteMember(m.id)} className="text-xs text-red-300 hover:text-red-200">Eliminar</button>
                     </li>
                   ))}
-                  {members.filter((m) => m.tribe === t.id).length === 0 && (
-                    <li className="px-3 py-2 text-xs text-ember-100/40">Sin integrantes cargados.</li>
-                  )}
+                  {members.filter((m) => m.tribe === t.id).length === 0 && <li className="px-3 py-2 text-xs text-ember-100/40">Sin integrantes cargados.</li>}
                 </ul>
               </div>
             ))}
@@ -482,15 +370,12 @@ export default function SageDashboard() {
                     <tr key={t.id} className="border-t border-white/5">
                       <td className="py-3"><TribeBadge tribeId={t.id}>{t.plural}</TribeBadge></td>
                       <td className="py-3 font-display text-lg text-jade-400">{counts[t.id]?.responded ?? 0}</td>
-                      <td className="py-3 font-display text-lg text-ember-300">
-                        {(counts[t.id]?.total ?? 0) - (counts[t.id]?.responded ?? 0)}
-                      </td>
+                      <td className="py-3 font-display text-lg text-ember-300">{(counts[t.id]?.total ?? 0) - (counts[t.id]?.responded ?? 0)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
             <div className="mt-6 grid grid-cols-3 gap-3 text-center">
               <Stat label="Participantes" value={members.length} />
               <Stat label="Respondieron" value={activityResponses.length} />
@@ -527,6 +412,79 @@ function Stat({ label, value }) {
 
 function ResultsView({ stage, onContinue, resultsByTribe, winner, totals, activity }) {
   const optionLabel = { a: activity.option_a, b: activity.option_b, c: activity.option_c, d: activity.option_d }
+
+  function downloadExcel() {
+    const fecha = new Date().toLocaleDateString('es-AR')
+    const hora = new Date().toLocaleTimeString('es-AR')
+
+    const TRIBE_COLORS = {
+      Mapuches: { rgb: '7c3aed' },
+      Guaraníes: { rgb: '65a30d' },
+      Mocovíes: { rgb: 'ea580c' }
+    }
+    const WHITE = { rgb: 'FFFFFF' }
+    const DARK = { rgb: '1e1e2e' }
+    const GRAY = { rgb: 'e5e7eb' }
+
+    function sc(ws, ref, style) {
+      if (!ws[ref]) ws[ref] = { v: '', t: 's' }
+      ws[ref].s = style
+    }
+
+    const rows = [
+      ['RESUMEN POR TRIBU', '', '', '', ''],
+      ['Tribu', 'Respondieron', 'Correctas', 'Incorrectas', 'Porcentaje'],
+      ...TRIBES.map((t) => {
+        const r = resultsByTribe[t.id]
+        return [t.plural, r.total, r.correct, r.total - r.correct, `${r.pct}%`]
+      }),
+      [],
+      ['DETALLE POR OPCIÓN', '', '', '', '', ''],
+      ['Tribu', 'Opción A', 'Opción B', 'Opción C', 'Opción D', 'Total'],
+      ...TRIBES.map((t) => {
+        const r = resultsByTribe[t.id]
+        return [t.plural, r.opts.a, r.opts.b, r.opts.c, r.opts.d, r.total]
+      }),
+      [],
+      ['INFORMACIÓN DE LA ACTIVIDAD', ''],
+      ['Pregunta', activity.question],
+      ['Respuesta correcta', `Opción ${activity.correct_option.toUpperCase()} — ${optionLabel[activity.correct_option]}`],
+      ['Exportado el', `${fecha} ${hora}`]
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }]
+
+    const sectionStyle = { font: { bold: true, color: WHITE, sz: 13 }, fill: { patternType: 'solid', fgColor: DARK } }
+    sc(ws, 'A1', sectionStyle)
+    sc(ws, 'A7', sectionStyle)
+    sc(ws, 'A13', sectionStyle)
+
+    const hStyle = { font: { bold: true }, fill: { patternType: 'solid', fgColor: GRAY }, alignment: { horizontal: 'center' } }
+    ;['A2','B2','C2','D2','E2','A8','B8','C8','D8','E8','F8'].forEach(r => sc(ws, r, hStyle))
+
+    const r1 = { Mapuches: 3, Guaraníes: 4, Mocovíes: 5 }
+    const r2 = { Mapuches: 9, Guaraníes: 10, Mocovíes: 11 }
+
+    Object.entries(r1).forEach(([tribe, row]) => {
+      ;['A','B','C','D','E'].forEach(col => {
+        sc(ws, `${col}${row}`, { fill: { patternType: 'solid', fgColor: { rgb: TRIBE_COLORS[tribe].rgb } }, font: { color: WHITE, bold: col === 'A' }, alignment: { horizontal: col === 'A' ? 'left' : 'center' } })
+      })
+    })
+
+    Object.entries(r2).forEach(([tribe, row]) => {
+      ;['A','B','C','D','E','F'].forEach(col => {
+        sc(ws, `${col}${row}`, { fill: { patternType: 'solid', fgColor: { rgb: TRIBE_COLORS[tribe].rgb } }, font: { color: WHITE, bold: col === 'A' }, alignment: { horizontal: col === 'A' ? 'left' : 'center' } })
+      })
+    })
+
+    const iStyle = { font: { bold: true } }
+    sc(ws, 'A14', iStyle); sc(ws, 'A15', iStyle); sc(ws, 'A16', iStyle)
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Resultados')
+    XLSX.writeFile(wb, `Guardian_Secreto_${fecha.replace(/\//g, '-')}.xlsx`)
+  }
 
   if (stage === 1) {
     return (
@@ -608,6 +566,10 @@ function ResultsView({ stage, onContinue, resultsByTribe, winner, totals, activi
         <Stat label="Incorrectas" value={totals.totalIncorrect} />
       </div>
       <p className="mt-4 text-sm text-ember-100/60">Porcentaje general de aciertos: {totals.pct}%</p>
+
+      <button onClick={downloadExcel} className="btn-primary mt-6 inline-flex items-center gap-2">
+        📊 Descargar Excel
+      </button>
     </section>
   )
 }
