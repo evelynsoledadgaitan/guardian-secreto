@@ -431,6 +431,16 @@ function ResultsView({ stage, onContinue, resultsByTribe, winner, totals, activi
       ws[ref].s = style
     }
 
+    const winnerTribes = TRIBES.filter(t => {
+      const r = resultsByTribe[t.id]
+      return r.correct === Math.max(...TRIBES.map(t2 => resultsByTribe[t2.id].correct))
+    })
+    const isTie = winnerTribes.length > 1
+    const winnerText = isTie
+      ? `EMPATE entre ${winnerTribes.map(t => t.plural).join(' y ')}`
+      : `🏆 ${winnerTribes[0].plural}`
+    const winnerColorRgb = isTie ? 'd97a1f' : TRIBE_COLORS[winnerTribes[0].plural].rgb
+
     const rows = [
       ['RESUMEN POR TRIBU', '', '', '', ''],
       ['Tribu', 'Respondieron', 'Correctas', 'Incorrectas', 'Porcentaje'],
@@ -449,7 +459,10 @@ function ResultsView({ stage, onContinue, resultsByTribe, winner, totals, activi
       ['INFORMACIÓN DE LA ACTIVIDAD', ''],
       ['Pregunta', activity.question],
       ['Respuesta correcta', `Opción ${activity.correct_option.toUpperCase()} — ${optionLabel[activity.correct_option]}`],
-      ['Exportado el', `${fecha} ${hora}`]
+      ['Exportado el', `${fecha} ${hora}`],
+      [],
+      ['TRIBU GANADORA', ''],
+      [winnerText, '']
     ]
 
     const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -459,6 +472,7 @@ function ResultsView({ stage, onContinue, resultsByTribe, winner, totals, activi
     sc(ws, 'A1', sectionStyle)
     sc(ws, 'A7', sectionStyle)
     sc(ws, 'A13', sectionStyle)
+    sc(ws, 'A19', sectionStyle)
 
     const hStyle = { font: { bold: true }, fill: { patternType: 'solid', fgColor: GRAY }, alignment: { horizontal: 'center' } }
     ;['A2','B2','C2','D2','E2','A8','B8','C8','D8','E8','F8'].forEach(r => sc(ws, r, hStyle))
@@ -480,6 +494,14 @@ function ResultsView({ stage, onContinue, resultsByTribe, winner, totals, activi
 
     const iStyle = { font: { bold: true } }
     sc(ws, 'A14', iStyle); sc(ws, 'A15', iStyle); sc(ws, 'A16', iStyle)
+
+    ;['A','B','C','D','E'].forEach(col => {
+      sc(ws, `${col}20`, {
+        fill: { patternType: 'solid', fgColor: { rgb: winnerColorRgb } },
+        font: { bold: true, color: WHITE, sz: 14 },
+        alignment: { horizontal: 'center' }
+      })
+    })
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Resultados')
