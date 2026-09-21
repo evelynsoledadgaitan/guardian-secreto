@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx-js-style'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase, TRIBES } from '../lib/supabaseClient.js'
 import TribeBadge from '../components/TribeBadge.jsx'
