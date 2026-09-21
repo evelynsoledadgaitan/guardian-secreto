@@ -13,7 +13,8 @@ export default function TribeLogin() {
   const [error, setError] = useState('')
   const [hasActiveActivity, setHasActiveActivity] = useState(false)
   const [members, setMembers] = useState([])
-  const [selected, setSelected] = useState('')
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState(null)
 
   useEffect(() => {
     if (!tribe) return
@@ -49,8 +50,12 @@ export default function TribeLogin() {
 
   function handleContinue() {
     if (!selected) return
-    navigate(`/responder/${tribeId}/${selected}`)
+    navigate(`/responder/${tribeId}/${selected.id}`)
   }
+
+  const filtered = members.filter((m) =>
+    m.name.toLowerCase().includes(search.toLowerCase())
+  )
 
   if (!tribe) {
     return (
@@ -86,22 +91,40 @@ export default function TribeLogin() {
           </p>
         )}
 
-        {!loading && !error && members.length > 0 && (
+        {!loading && !error && hasActiveActivity && members.length > 0 && (
           <div className="mt-6 flex flex-col gap-4">
-            <label className="label-eyebrow" htmlFor="participant">
-              Seleccioná tu nombre
-            </label>
-            <select
-              id="participant"
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
+            <label className="label-eyebrow">Buscá tu nombre</label>
+            <input
+              type="text"
+              placeholder="Escribí parte de tu nombre..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setSelected(null) }}
               className="rounded-xl border border-white/10 bg-night-700 px-4 py-3 text-ember-50 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-300"
-            >
-              <option value="">-- Elegí tu nombre --</option>
-              {members.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            />
+
+            {search.length > 0 && (
+              <ul className="max-h-52 overflow-y-auto rounded-xl border border-white/10 bg-night-700 divide-y divide-white/5">
+                {filtered.length === 0 ? (
+                  <li className="px-4 py-3 text-sm text-ember-100/50">No se encontraron resultados.</li>
+                ) : (
+                  filtered.map((m) => (
+                    <li
+                      key={m.id}
+                      onClick={() => { setSelected(m); setSearch(m.name) }}
+                      className={`cursor-pointer px-4 py-3 text-sm transition-colors hover:bg-ember-500/10 ${selected?.id === m.id ? 'bg-ember-500/20 text-ember-50 font-semibold' : 'text-ember-100'}`}
+                    >
+                      {m.name}
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+
+            {selected && (
+              <p className="text-xs text-ember-100/60">
+                ✅ Seleccionado: <span className="font-semibold text-ember-50">{selected.name}</span>
+              </p>
+            )}
 
             <button onClick={handleContinue} disabled={!selected} className="btn-primary">
               Continuar
